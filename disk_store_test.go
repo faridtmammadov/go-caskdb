@@ -10,11 +10,12 @@ import (
 )
 
 func TestDiskStore_Get(t *testing.T) {
-	store, err := NewDiskStore("test.db")
+	store, err := NewDiskStore("test_db")
 	if err != nil {
 		t.Fatalf("failed to create disk store: %v", err)
 	}
-	defer os.Remove("test.db")
+	defer os.RemoveAll("test_db")
+	defer store.Close()
 	store.Set("name", "jojo")
 	val, _ := store.Get("name")
 	if val != "jojo" {
@@ -23,11 +24,12 @@ func TestDiskStore_Get(t *testing.T) {
 }
 
 func TestDiskStore_GetInvalid(t *testing.T) {
-	store, err := NewDiskStore("test.db")
+	store, err := NewDiskStore("test_db")
 	if err != nil {
 		t.Fatalf("failed to create disk store: %v", err)
 	}
-	defer os.Remove("test.db")
+	defer os.RemoveAll("test_db")
+	defer store.Close()
 	val, _ := store.Get("some key")
 	if val != "" {
 		t.Errorf("Get() = %v, want %v", val, "")
@@ -35,11 +37,12 @@ func TestDiskStore_GetInvalid(t *testing.T) {
 }
 
 func TestDiskStore_SetWithPersistence(t *testing.T) {
-	store, err := NewDiskStore("test.db")
+	store, err := NewDiskStore("test_db")
 	if err != nil {
 		t.Fatalf("failed to create disk store: %v", err)
 	}
-	defer os.Remove("test.db")
+	defer os.RemoveAll("test_db")
+	defer store.Close()
 
 	tests := map[string]string{
 		"crime and punishment": "dostoevsky",
@@ -59,7 +62,8 @@ func TestDiskStore_SetWithPersistence(t *testing.T) {
 		}
 	}
 	store.Close()
-	store, err = NewDiskStore("test.db")
+
+	store, err = NewDiskStore("test_db")
 	if err != nil {
 		t.Fatalf("failed to create disk store: %v", err)
 	}
@@ -73,11 +77,12 @@ func TestDiskStore_SetWithPersistence(t *testing.T) {
 }
 
 func TestDiskStore_Delete(t *testing.T) {
-	store, err := NewDiskStore("test.db")
+	store, err := NewDiskStore("test_db")
 	if err != nil {
 		t.Fatalf("failed to create disk store: %v", err)
 	}
-	defer os.Remove("test.db")
+	defer os.RemoveAll("test_db")
+	defer store.Close()
 
 	tests := map[string]string{
 		"crime and punishment": "dostoevsky",
@@ -100,7 +105,7 @@ func TestDiskStore_Delete(t *testing.T) {
 	}
 	store.Close()
 
-	store, err = NewDiskStore("test.db")
+	store, err = NewDiskStore("test_db")
 	if err != nil {
 		t.Fatalf("failed to create disk store: %v", err)
 	}
@@ -121,9 +126,9 @@ func TestDiskStore_Delete(t *testing.T) {
 }
 
 func TestDiskStore_InValidCheckSum(t *testing.T) {
-	store, _ := NewDiskStore("test.db")
+	store, _ := NewDiskStore("test_db")
+	defer os.RemoveAll("test_db")
 	defer store.Close()
-	defer os.Remove("test.db")
 
 	k1, v1 := "👋", "world"
 	h1 := Header{TimeStamp: uint32(time.Now().Unix()), KeySize: uint32(len(k1)), ValueSize: uint32(len(v1)), Meta: 0}
@@ -148,7 +153,7 @@ func TestDiskStore_InValidCheckSum(t *testing.T) {
 		tt.EncodeKV(buf)
 
 		// store the data
-		store.keyDir[tt.Key] = NewKeyEntry(tt.Header.TimeStamp, uint32(store.writePosition), tt.Size())
+		store.keyDir[tt.Key] = NewKeyEntry(tt.Header.TimeStamp, store.file, uint32(store.writePosition), tt.Size())
 		store.writePosition += int(tt.Size())
 		store.write(buf.Bytes())
 
@@ -172,7 +177,7 @@ func TestDiskStore_InValidCheckSum(t *testing.T) {
 		}
 
 		// write the corrupted bytes and update the hash table
-		store.keyDir[tt.Key] = NewKeyEntry(tt.Header.TimeStamp+uint32(time.Now().Unix()), uint32(store.writePosition), tt.Size())
+		store.keyDir[tt.Key] = NewKeyEntry(tt.Header.TimeStamp+uint32(time.Now().Unix()), store.file, uint32(store.writePosition), tt.Size())
 		store.writePosition += int(tt.Size())
 		store.write(kvRecord)
 
@@ -199,4 +204,25 @@ func TestDiskStore_InValidCheckSum(t *testing.T) {
 			t.Errorf("checksum matched, data is supposed to be corrupted: Got: %d, Want: %d", actualCheckSum, expectedCheckSum)
 		}
 	}
+}
+
+func TestDiskStore_NewFileCreatedAfterMaxFileSizeReached(t *testing.T) {
+	store, err := NewDiskStore("test_db")
+	if err != nil {
+		t.Fatalf("failed to create disk store: %v", err)
+	}
+	defer os.RemoveAll("test_db")
+	defer store.Close()
+
+	MaxFileSize = 50
+
+	store.Set("crime and punishment", "dostoevsky")
+	store.Set("anna karenina", "tolstoy")
+
+	dirEntry, _ := os.ReadDir("test_db")
+
+	if len(dirEntry) == 1 {
+		t.Errorf("directory must have more than 1 file")
+	}
+
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"hash/crc32"
+	"os"
 )
 
 // format file provides encode/decode functions for serialisation and deserialisation
@@ -80,6 +81,8 @@ type KeyEntry struct {
 	// Timestamp at which we wrote the KV pair to the disk. The value
 	// is current time in seconds since the epoch.
 	timestamp uint32
+	// The file that the data exists
+	file *os.File
 	// The position is the byte offset in the file where the data
 	// exists
 	position uint32
@@ -103,8 +106,8 @@ type Record struct {
 	RecordSize uint32
 }
 
-func NewKeyEntry(timestamp uint32, position uint32, totalSize uint32) KeyEntry {
-	return KeyEntry{timestamp, position, totalSize}
+func NewKeyEntry(timestamp uint32, file *os.File, position uint32, totalSize uint32) KeyEntry {
+	return KeyEntry{timestamp, file, position, totalSize}
 }
 
 func (h *Header) EncodeHeader(buf *bytes.Buffer) error {
