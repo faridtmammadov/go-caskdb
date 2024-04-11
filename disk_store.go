@@ -172,10 +172,6 @@ func (d *DiskStore) Set(key string, value string) error {
 	r := Record{Header: h, Key: key, Value: value, RecordSize: headerSize + h.KeySize + h.ValueSize}
 	r.Header.CheckSum = r.CalculateCheckSum()
 
-	if err := d.checkMaxFileSizeReached(r.RecordSize); err != nil {
-		return err
-	}
-
 	//encode the record
 	buf := new(bytes.Buffer)
 	err := r.EncodeKV(buf)
@@ -191,18 +187,31 @@ func (d *DiskStore) Set(key string, value string) error {
 	return nil
 }
 
-func (d *DiskStore) checkMaxFileSizeReached(size uint32) error {
+func (d *DiskStore) checkMaxFileSizeReached(size int) error {
+	if d.file == nil {
+		err := d.createNewDataFile()
+		return err
+	}
+
 	stat, _ := d.file.Stat()
 	nextSize := stat.Size() + int64(size)
 	if nextSize > MaxFileSize {
-		activeFile := createFilenameId(d.file.Name()) + ".bitcask.data"
-		file, err := os.Create(filepath.Join(d.dir, activeFile))
-		if err != nil {
-			return err
-		}
-		d.file = file
-		d.writePosition = 0
+		err := d.createNewDataFile()
+
+		return err
 	}
+
+	return nil
+}
+
+func (d *DiskStore) createNewDataFile() error {
+	activeFile := createFilenameId(d.file.Name()) + ".bitcask.data"
+	file, err := os.Create(filepath.Join(d.dir, activeFile))
+	if err != nil {
+		return err
+	}
+	d.file = file
+	d.writePosition = 0
 
 	return nil
 }
@@ -234,10 +243,12 @@ func (d *DiskStore) Close() bool {
 	// to the disk. Check documentation of DiskStore.write() to understand
 	// following the operations
 	// TODO: handle errors
-	d.file.Sync()
-	if err := d.file.Close(); err != nil {
-		// TODO: log the error
-		return false
+	if d.file != nil {
+		d.file.Sync()
+		if err := d.file.Close(); err != nil {
+			// TODO: log the error
+			return false
+		}
 	}
 	for _, v := range d.keyDir {
 		v.file.Close()
@@ -246,6 +257,10 @@ func (d *DiskStore) Close() bool {
 }
 
 func (d *DiskStore) write(data []byte) {
+	if err := d.checkMaxFileSizeReached(len(data)); err != nil {
+		panic(err)
+	}
+
 	// saving stuff to a file reliably is hard!
 	// if you would like to explore and learn more, then
 	// start from here: https://danluu.com/file-consistency/

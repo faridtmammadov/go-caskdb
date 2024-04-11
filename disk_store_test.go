@@ -226,3 +226,41 @@ func TestDiskStore_NewFileCreatedAfterMaxFileSizeReached(t *testing.T) {
 	}
 
 }
+
+func TestDiskStore_ReadFromMultipleFiles(t *testing.T) {
+	store, err := NewDiskStore("test_db")
+	if err != nil {
+		t.Fatalf("failed to create disk store: %v", err)
+	}
+	defer os.RemoveAll("test_db")
+
+	tests := map[string]string{
+		"crime and punishment": "dostoevsky",
+		"anna karenina":        "tolstoy",
+		"war and peace":        "tolstoy",
+		"hamlet":               "shakespeare",
+		"othello":              "shakespeare",
+		"brave new world":      "huxley",
+		"dune":                 "frank herbert",
+	}
+	for key, val := range tests {
+		store.Set(key, val)
+	}
+
+	MaxFileSize = 50
+
+	store.Close()
+
+	store, err = NewDiskStore("test_db")
+	if err != nil {
+		t.Fatalf("failed to create disk store: %v", err)
+	}
+	for key, val := range tests {
+		actualVal, _ := store.Get(key)
+		if actualVal != val {
+			t.Errorf("Get() = %v, want %v", actualVal, val)
+		}
+	}
+
+	store.Close()
+}
